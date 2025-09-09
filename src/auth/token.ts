@@ -32,8 +32,10 @@ export const tokenStore = {
     inMemRefresh = refresh;
 
     if (persist) {
-      access ? localStorage.setItem(LS.access, access) : localStorage.removeItem(LS.access);
-      refresh ? localStorage.setItem(LS.refresh, refresh) : localStorage.removeItem(LS.refresh);
+      if (access) localStorage.setItem(LS.access, access);
+      else localStorage.removeItem(LS.access);
+      if (refresh) localStorage.setItem(LS.refresh, refresh);
+      else localStorage.removeItem(LS.refresh);
     } else {
       localStorage.removeItem(LS.access);
       localStorage.removeItem(LS.refresh);
