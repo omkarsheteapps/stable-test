@@ -1,5 +1,119 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+interface AppEntity {
+  id: number;
+  name: string;
+  description?: string;
+}
+
 function Apps() {
-  return <div>Apps</div>;
+  const [apps, setApps] = useState<AppEntity[]>([]);
+  const [projectId, setProjectId] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/projects", { requireAuth: true });
+        if (Array.isArray(data) && data.length > 0) {
+          setProjectId(data[0].id);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) return;
+    (async () => {
+      try {
+        const { data } = await api.get("/apps", {
+          params: { projectId },
+          requireAuth: true,
+        });
+        setApps(Array.isArray(data) ? data : []);
+      } catch {
+        setApps([]);
+      }
+    })();
+  }, [projectId]);
+
+  const createApp = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!projectId) return;
+    try {
+      await api.post(
+        "/apps",
+        { projectId, name, description },
+        { requireAuth: true }
+      );
+      const { data } = await api.get("/apps", {
+        params: { projectId },
+        requireAuth: true,
+      });
+      setApps(Array.isArray(data) ? data : []);
+      setOpen(false);
+      setName("");
+      setDescription("");
+    } catch {
+      /* handle error - omitted */
+    }
+  };
+
+  return (
+    <div className="p-4">
+      {apps.length === 0 ? (
+        <Button onClick={() => setOpen(true)}>Create App</Button>
+      ) : (
+        <ul className="space-y-2">
+          {apps.map((a) => (
+            <li key={a.id} className="border p-2">
+              {a.name}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {open && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-md">
+            <CardContent>
+              <form onSubmit={createApp} className="grid gap-4 p-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="app-title">Title</Label>
+                  <Input
+                    id="app-title"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="app-description">Description</Label>
+                  <Input
+                    id="app-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" className="mt-2">
+                  Save
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default Apps;

@@ -7,6 +7,7 @@ import {
 import Login from "./pages/login/Login";
 import Projects from "./pages/projects/Projects";
 import Apps from "./pages/apps/Apps";
+import AppDetail from "./pages/apps/AppDetail";
 import Admin from "./pages/admin/Admin";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -20,13 +21,15 @@ function RoleRoutes() {
       <Route path="/" element={<Navigate to="/admin-dashboard" replace />} />
       <Route path="/admin-dashboard" element={<Admin />} />
       <Route path="/projects" element={<Navigate to="/" replace />} />
-      <Route path="/applications" element={<Navigate to="/" replace />} />
+      <Route path="/apps" element={<Navigate to="/" replace />} />
+      <Route path="/app/:id" element={<Navigate to="/" replace />} />
     </>
   ) : (
     <>
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/projects" element={<Projects />} />
-      <Route path="/applications/:id" element={<Apps />} />
+      <Route path="/apps" element={<Apps />} />
+      <Route path="/app/:id" element={<AppDetail />} />
       <Route path="/admin-dashboard" element={<Navigate to="/" replace />} />
     </>
   );
