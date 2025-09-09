@@ -96,8 +96,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    const rt = refreshRef.current ?? tokenStore.getRefresh();
     try {
-      await api.post("/auth/logout"); // public call
+      await api.post(
+        "/auth/logout",
+        { refreshToken: rt },
+        { requireAuth: true }
+      );
     } catch {
       /* ignore */
     }
