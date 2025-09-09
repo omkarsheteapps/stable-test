@@ -1,16 +1,12 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+export function LoginForm({ className }: React.ComponentProps<"div">) {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,8 +20,10 @@ export function LoginForm({
     try {
       await login(email, password, remember);
       navigate("/", { replace: true });
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? "Login failed");
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      const message = apiErr.response?.data?.message;
+      setError(message ?? "Login failed");
     }
   };
   return (

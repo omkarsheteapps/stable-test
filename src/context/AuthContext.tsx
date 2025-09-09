@@ -10,10 +10,12 @@ import { api } from "../lib/api";
 import { getExpMs, tokenStore } from "../auth/token";
 
 type User = { id?: string; email?: string; role?: string } | null;
+type Meta = { user?: User; [key: string]: unknown } | null;
 
 type AuthCtx = {
   accessToken: string | null;
   user: User;
+  meta: Meta;
   isAuthenticated: boolean;
   loading: boolean;
   login: (email: string, password: string, remember?: boolean) => Promise<void>;
@@ -23,14 +25,15 @@ type AuthCtx = {
 const AuthContext = createContext<AuthCtx | null>(null);
 
 // ---- replace / adjust to your API ----
-async function getProfile() {
-  const { data } = await api.get("/me", { requireAuth: true });
-  return data as { id: string; email: string; role?: string };
+async function getMeta() {
+  const { data } = await api.get("/meta", { requireAuth: true });
+  return data as Meta;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [user, setUser] = useState<User>(null);
+  const [meta, setMeta] = useState<Meta>(null);
   const [loading, setLoading] = useState(true);
 
   // refs for interceptors & timers
@@ -83,9 +86,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     rememberRef.current = remember;
     setTokens(a, r);
     try {
-      const me = await getProfile();
-      setUser(me);
+      const m = await getMeta();
+      setMeta(m);
+      setUser(m?.user ?? null);
     } catch {
+      setMeta(null);
       setUser(null);
     }
   };
@@ -98,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     rememberRef.current = false;
     setTokens(null, null);
+    setMeta(null);
     setUser(null);
   };
 
@@ -112,8 +118,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           refreshRef.current = persisted.refresh;
           await refresh(); // sets access & (rotated) refresh
           try {
-            setUser(await getProfile());
+            const m = await getMeta();
+            setMeta(m);
+            setUser(m?.user ?? null);
           } catch {
+            setMeta(null);
             setUser(null);
           }
           setLoading(false);
@@ -129,17 +138,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           rememberRef.current = true;
           setTokens(persisted.access, null);
           try {
-            setUser(await getProfile());
+            const m = await getMeta();
+            setMeta(m);
+            setUser(m?.user ?? null);
           } catch {
+            setMeta(null);
             setUser(null);
           }
         } else {
           setTokens(null, null);
+          setMeta(null);
           setUser(null);
         }
         setLoading(false);
       } catch {
         setTokens(null, null);
+        setMeta(null);
         setUser(null);
         setLoading(false);
       }
@@ -182,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         config.headers = config.headers ?? {};
         if (!config.headers.Authorization) {
-          (config.headers as any).Authorization = `Bearer ${accessRef.current}`;
+      (config.headers as Record<string, unknown>).Authorization = `Bearer ${accessRef.current}`;
         }
       }
       return config;
@@ -190,9 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // RESPONSE: 401 -> refresh with safe queue; avoid recursion on auth endpoints
     let isRefreshing = false;
-    let queue: { resolve: (v: any) => void; reject: (e: any) => void }[] = [];
+    let queue: { resolve: (v: string | undefined) => void; reject: (e: unknown) => void }[] = [];
 
-    const processQueue = (err: any, newToken?: string) => {
+    const processQueue = (err: unknown, newToken?: string) => {
       queue.forEach(({ resolve, reject }) =>
         err ? reject(err) : resolve(newToken)
       );
@@ -229,7 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               queue.push({
                 resolve: (t) => {
                   if (t && original.headers)
-                    (original.headers as any).Authorization = `Bearer ${t}`;
+                    (original.headers as Record<string, unknown>).Authorization = `Bearer ${t}`;
                   resolve(api(original));
                 },
                 reject,
@@ -242,7 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const newToken = await refresh();
             processQueue(null, newToken);
             if (original.headers)
-              (original.headers as any).Authorization = `Bearer ${newToken}`;
+              (original.headers as Record<string, unknown>).Authorization = `Bearer ${newToken}`;
             return api(original);
           } catch (e) {
             processQueue(e);
@@ -266,17 +280,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       accessToken,
       user,
+      meta,
       isAuthenticated: Boolean(accessToken),
       loading,
       login,
       logout,
     }),
-    [accessToken, user, loading]
+    [accessToken, user, meta, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
