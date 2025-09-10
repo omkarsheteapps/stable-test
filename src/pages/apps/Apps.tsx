@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { getProjects } from "@/lib/projects";
 import type { App, GetAppsResponse } from "@/types/app";
@@ -66,7 +67,7 @@ function Apps() {
         <ul className="space-y-2">
           {apps.map((a) => (
             <li key={a.app_id} className="border p-2">
-              {a.name}
+              <Link to={`/app/${a.app_id}`}>{a.name}</Link>
             </li>
           ))}
         </ul>
