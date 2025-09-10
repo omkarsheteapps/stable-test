@@ -116,78 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  // ---- Boot: restore session safely ----
-  useEffect(() => {
-    (async () => {
-      try {
-        // 1) Try using any persisted refresh token to get a fresh access token
-        const persisted = tokenStore.readPersisted();
-        if (persisted.refresh) {
-          rememberRef.current = true;
-          refreshRef.current = persisted.refresh;
-          await refresh(); // sets access & (rotated) refresh
-          try {
-            const m = await getMeta();
-            setMeta(m);
-            setUser(m?.user ?? null);
-          } catch {
-            setMeta(null);
-            setUser(null);
-          }
-          setLoading(false);
-          return;
-        }
-
-        // 2) If we only have a persisted access (rare), use it until it expires
-        if (
-          persisted.access &&
-          (!getExpMs(persisted.access) ||
-            getExpMs(persisted.access)! > Date.now())
-        ) {
-          rememberRef.current = true;
-          setTokens(persisted.access, null);
-          try {
-            const m = await getMeta();
-            setMeta(m);
-            setUser(m?.user ?? null);
-          } catch {
-            setMeta(null);
-            setUser(null);
-          }
-        } else {
-          setTokens(null, null);
-          setMeta(null);
-          setUser(null);
-        }
-        setLoading(false);
-      } catch {
-        setTokens(null, null);
-        setMeta(null);
-        setUser(null);
-        setLoading(false);
-      }
-    })();
-
-    // multi-tab sync (listen for access/refresh changes)
-    const onStorage = (e: StorageEvent) => {
-      if (
-        e.key === tokenStore.keys.access ||
-        e.key === tokenStore.keys.refresh
-      ) {
-        const persisted = tokenStore.readPersisted();
-        accessRef.current = persisted.access;
-        refreshRef.current = persisted.refresh;
-        setAccessToken(persisted.access);
-        schedule(persisted.access);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
-    };
-  }, []);
-
   // ---- Axios interceptors ----
   useEffect(() => {
     // REQUEST: attach access token unless skipped
@@ -282,6 +210,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       api.interceptors.request.eject(reqId);
       api.interceptors.response.eject(resId);
+    };
+  }, []);
+
+  // ---- Boot: restore session safely ----
+  useEffect(() => {
+    (async () => {
+      try {
+        // 1) Try using any persisted refresh token to get a fresh access token
+        const persisted = tokenStore.readPersisted();
+        if (persisted.refresh) {
+          rememberRef.current = true;
+          refreshRef.current = persisted.refresh;
+          await refresh(); // sets access & (rotated) refresh
+          try {
+            const m = await getMeta();
+            setMeta(m);
+            setUser(m?.user ?? null);
+          } catch {
+            setMeta(null);
+            setUser(null);
+          }
+          setLoading(false);
+          return;
+        }
+
+        // 2) If we only have a persisted access (rare), use it until it expires
+        if (
+          persisted.access &&
+          (!getExpMs(persisted.access) ||
+            getExpMs(persisted.access)! > Date.now())
+        ) {
+          rememberRef.current = true;
+          setTokens(persisted.access, null);
+          try {
+            const m = await getMeta();
+            setMeta(m);
+            setUser(m?.user ?? null);
+          } catch {
+            setMeta(null);
+            setUser(null);
+          }
+        } else {
+          setTokens(null, null);
+          setMeta(null);
+          setUser(null);
+        }
+        setLoading(false);
+      } catch {
+        setTokens(null, null);
+        setMeta(null);
+        setUser(null);
+        setLoading(false);
+      }
+    })();
+
+    // multi-tab sync (listen for access/refresh changes)
+    const onStorage = (e: StorageEvent) => {
+      if (
+        e.key === tokenStore.keys.access ||
+        e.key === tokenStore.keys.refresh
+      ) {
+        const persisted = tokenStore.readPersisted();
+        accessRef.current = persisted.access;
+        refreshRef.current = persisted.refresh;
+        setAccessToken(persisted.access);
+        schedule(persisted.access);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
     };
   }, []);
 
