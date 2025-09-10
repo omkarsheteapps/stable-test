@@ -1,18 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
+import { getProjects } from "@/lib/projects";
+import type { App } from "@/types/app";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-interface AppEntity {
-  id: number;
-  name: string;
-  description?: string;
-}
-
 function Apps() {
-  const [apps, setApps] = useState<AppEntity[]>([]);
+  const [apps, setApps] = useState<App[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -21,9 +17,9 @@ function Apps() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/projects");
-        if (Array.isArray(data) && data.length > 0) {
-          setProjectId(data[0].id);
+        const projects = await getProjects();
+        if (projects.length > 0) {
+          setProjectId(projects[0].project_id);
         }
       } catch {
         /* ignore */

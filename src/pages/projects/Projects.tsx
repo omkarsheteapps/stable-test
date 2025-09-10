@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { getProjects } from "@/lib/projects";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,8 +16,8 @@ function Projects() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/projects");
-        if (Array.isArray(data) && data.length > 0) {
+        const projects = await getProjects();
+        if (projects.length > 0) {
           navigate("/apps", { replace: true });
         } else {
           setOpen(true);
