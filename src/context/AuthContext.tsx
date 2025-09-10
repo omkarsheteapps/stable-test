@@ -87,8 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       { skipAuth: true }
     ); // public call
 
-    const a: string = data.access_token ?? data.accessToken;
-    const r: string = data.refresh_token ?? data.refreshToken;
+    const a: string = data.data.access_token ?? data.data.accessToken;
+    const r: string = data.data.refresh_token ?? data.data.refreshToken;
 
     setTokens(a, r);
     try {
@@ -130,7 +130,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         config.headers = config.headers ?? {};
         if (!config.headers.Authorization) {
-          (config.headers as Record<string, unknown>).Authorization = `Bearer ${accessRef.current}`;
+          (
+            config.headers as Record<string, unknown>
+          ).Authorization = `Bearer ${accessRef.current}`;
         }
       }
       return config;
@@ -138,7 +140,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // RESPONSE: 401 -> refresh with safe queue; avoid recursion on auth endpoints
     let isRefreshing = false;
-    let queue: { resolve: (v: string | undefined) => void; reject: (e: unknown) => void }[] = [];
+    let queue: {
+      resolve: (v: string | undefined) => void;
+      reject: (e: unknown) => void;
+    }[] = [];
 
     const processQueue = (err: unknown, newToken?: string) => {
       queue.forEach(({ resolve, reject }) =>
@@ -177,7 +182,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               queue.push({
                 resolve: (t) => {
                   if (t && original.headers)
-                    (original.headers as Record<string, unknown>).Authorization = `Bearer ${t}`;
+                    (
+                      original.headers as Record<string, unknown>
+                    ).Authorization = `Bearer ${t}`;
                   resolve(api(original));
                 },
                 reject,
@@ -190,7 +197,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const newToken = await refresh();
             processQueue(null, newToken);
             if (original.headers)
-              (original.headers as Record<string, unknown>).Authorization = `Bearer ${newToken}`;
+              (
+                original.headers as Record<string, unknown>
+              ).Authorization = `Bearer ${newToken}`;
             return api(original);
           } catch (e) {
             processQueue(e);
@@ -216,9 +225,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         // 1) Try using any persisted refresh token to get a fresh access token
         const persisted = tokenStore.readPersisted();
-          if (persisted.refresh) {
-            refreshRef.current = persisted.refresh;
-            await refresh(); // sets access & (rotated) refresh
+        if (persisted.refresh) {
+          refreshRef.current = persisted.refresh;
+          await refresh(); // sets access & (rotated) refresh
           try {
             const m = await getMeta();
             setMeta(m);
@@ -232,12 +241,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // 2) If we only have a persisted access (rare), use it until it expires
-          if (
-            persisted.access &&
-            (!getExpMs(persisted.access) ||
-              getExpMs(persisted.access)! > Date.now())
-          ) {
-            setTokens(persisted.access, null);
+        if (
+          persisted.access &&
+          (!getExpMs(persisted.access) ||
+            getExpMs(persisted.access)! > Date.now())
+        ) {
+          setTokens(persisted.access, null);
           try {
             const m = await getMeta();
             setMeta(m);
