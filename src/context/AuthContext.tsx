@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthCtx | null>(null);
 
 // ---- replace / adjust to your API ----
 async function getMeta() {
-  const { data } = await api.get("/meta", { requireAuth: true });
+  const { data } = await api.get("/meta");
   return data as Meta;
 }
 
@@ -65,7 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rt = refreshRef.current ?? tokenStore.readPersisted().refresh;
     if (!rt) throw new Error("No refresh token");
     // Most APIs accept the refresh in body; adapt if your API expects headers
-    const { data } = await api.post("/auth/refresh", { refresh_token: rt }); // public call
+    const { data } = await api.post(
+      "/auth/refresh",
+      { refresh_token: rt },
+      { skipAuth: true }
+    ); // public call
 
     // support snakeCase or camelCase
     const newAccess: string = data.access_token ?? data.accessToken;
@@ -78,7 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login: AuthCtx["login"] = async (email, password, remember = false) => {
-    const { data } = await api.post("/auth/login", { email, password }); // public call
+    const { data } = await api.post(
+      "/auth/login",
+      { email, password },
+      { skipAuth: true }
+    ); // public call
 
     const a: string = data.access_token ?? data.accessToken;
     const r: string = data.refresh_token ?? data.refreshToken;
@@ -98,11 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     const rt = refreshRef.current ?? tokenStore.getRefresh();
     try {
-      await api.post(
-        "/auth/logout",
-        { refreshToken: rt },
-        { requireAuth: true }
-      );
+      await api.post("/auth/logout", { refreshToken: rt });
     } catch {
       /* ignore */
     }
@@ -186,13 +190,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ---- Axios interceptors ----
   useEffect(() => {
-    // REQUEST: attach access token only when explicitly requested
+    // REQUEST: attach access token unless skipped
     const apiHost = api.defaults.baseURL
       ? new URL(api.defaults.baseURL).host
       : null;
 
     const reqId = api.interceptors.request.use((config) => {
-      if (config.requireAuth && accessRef.current) {
+      if (!config.skipAuth && accessRef.current) {
         // host safety: never attach to other domains
         const abs = config.url
           ? new URL(config.url, api.defaults.baseURL || window.location.origin)
@@ -201,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         config.headers = config.headers ?? {};
         if (!config.headers.Authorization) {
-      (config.headers as Record<string, unknown>).Authorization = `Bearer ${accessRef.current}`;
+          (config.headers as Record<string, unknown>).Authorization = `Bearer ${accessRef.current}`;
         }
       }
       return config;
