@@ -11,7 +11,7 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   if (!config.skipAuth) {
     const token = tokenStore.getAccess();
-    if (token && !config.headers?.Authorization) {
+    if (token) {
       config.headers = config.headers ?? {};
       (config.headers as Record<string, unknown>).Authorization = `Bearer ${token}`;
     }

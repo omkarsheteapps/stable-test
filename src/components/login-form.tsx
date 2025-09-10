@@ -18,7 +18,7 @@ export function LoginForm({ className }: React.ComponentProps<"div">) {
     e.preventDefault();
     setError(null);
     try {
-      await login(email, password, remember);
+      await login(email, password);
       navigate("/", { replace: true });
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { message?: string } } };

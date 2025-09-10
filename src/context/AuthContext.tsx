@@ -18,7 +18,7 @@ type AuthCtx = {
   meta: Meta;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (email: string, password: string, remember?: boolean) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void> | void;
 };
 
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return newAccess;
   };
 
-  const login: AuthCtx["login"] = async (email, password, _remember = false) => {
+  const login: AuthCtx["login"] = async (email, password) => {
     const { data } = await api.post(
       "/auth/login",
       { email, password },
