@@ -16,22 +16,32 @@ function RoleRoutes() {
   const { user } = useAuth();
   const isAdmin = user?.role === "internal";
 
-  return isAdmin ? (
-    <>
-      <Route path="/" element={<Navigate to="/admin-dashboard" replace />} />
-      <Route path="/admin-dashboard" element={<Admin />} />
-      <Route path="/projects" element={<Navigate to="/" replace />} />
-      <Route path="/apps" element={<Navigate to="/" replace />} />
-      <Route path="/app/:id" element={<Navigate to="/" replace />} />
-    </>
-  ) : (
-    <>
-      <Route path="/" element={<Navigate to="/projects" replace />} />
-      <Route path="/projects" element={<Projects />} />
-      <Route path="/apps" element={<Apps />} />
-      <Route path="/app/:id" element={<AppDetail />} />
-      <Route path="/admin-dashboard" element={<Navigate to="/" replace />} />
-    </>
+  return (
+    <Routes>
+      {isAdmin ? (
+        <>
+          <Route
+            path="/"
+            element={<Navigate to="/admin-dashboard" replace />}
+          />
+          <Route path="/admin-dashboard" element={<Admin />} />
+          <Route path="/projects" element={<Navigate to="/" replace />} />
+          <Route path="/apps" element={<Navigate to="/" replace />} />
+          <Route path="/app/:id" element={<Navigate to="/" replace />} />
+        </>
+      ) : (
+        <>
+          <Route path="/" element={<Navigate to="/projects" replace />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/apps" element={<Apps />} />
+          <Route path="/app/:id" element={<AppDetail />} />
+          <Route
+            path="/admin-dashboard"
+            element={<Navigate to="/" replace />}
+          />
+        </>
+      )}
+    </Routes>
   );
 }
 
