@@ -21,7 +21,7 @@ function Apps() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/projects", { requireAuth: true });
+        const { data } = await api.get("/projects");
         if (Array.isArray(data) && data.length > 0) {
           setProjectId(data[0].id);
         }
@@ -37,7 +37,6 @@ function Apps() {
       try {
         const { data } = await api.get("/apps", {
           params: { projectId },
-          requireAuth: true,
         });
         setApps(Array.isArray(data) ? data : []);
       } catch {
@@ -50,14 +49,9 @@ function Apps() {
     e.preventDefault();
     if (!projectId) return;
     try {
-      await api.post(
-        "/apps",
-        { projectId, name, description },
-        { requireAuth: true }
-      );
+      await api.post("/apps", { projectId, name, description });
       const { data } = await api.get("/apps", {
         params: { projectId },
-        requireAuth: true,
       });
       setApps(Array.isArray(data) ? data : []);
       setOpen(false);

@@ -15,7 +15,7 @@ function Projects() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/projects", { requireAuth: true });
+        const { data } = await api.get("/projects");
         if (Array.isArray(data) && data.length > 0) {
           navigate("/apps", { replace: true });
         } else {
@@ -30,11 +30,7 @@ function Projects() {
   const createProject = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await api.post(
-        "/projects",
-        { name, description, createRepo: false },
-        { requireAuth: true }
-      );
+      await api.post("/projects", { name, description, createRepo: false });
       navigate("/apps", { replace: true });
     } catch {
       /* handle error - omitted */
