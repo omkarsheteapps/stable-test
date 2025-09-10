@@ -18,41 +18,46 @@ let inMemRefresh: string | null = null;
 
 const LS = {
   access: "access_token",
-  refresh: "refresh_token", // persist only if user selects "Remember me"
+  refresh: "refresh_token",
 };
 
 export const tokenStore = {
   // getters
-  getAccess: () => inMemAccess,
-  getRefresh: () => inMemRefresh,
+  getAccess: () => {
+    if (inMemAccess) return inMemAccess;
+    const token = localStorage.getItem(LS.access);
+    inMemAccess = token;
+    return token;
+  },
+  getRefresh: () => {
+    if (inMemRefresh) return inMemRefresh;
+    const token = localStorage.getItem(LS.refresh);
+    inMemRefresh = token;
+    return token;
+  },
 
-  // set both; if persist=true store in localStorage, else keep only in memory
-  setBoth: (access: string | null, refresh: string | null, persist = false) => {
+  // set both and persist in localStorage
+  setBoth: (access: string | null, refresh: string | null) => {
     inMemAccess = access;
     inMemRefresh = refresh;
 
-    if (persist) {
-      if (access) localStorage.setItem(LS.access, access);
-      else localStorage.removeItem(LS.access);
-      if (refresh) localStorage.setItem(LS.refresh, refresh);
-      else localStorage.removeItem(LS.refresh);
-    } else {
-      localStorage.removeItem(LS.access);
-      localStorage.removeItem(LS.refresh);
-    }
+    if (access) localStorage.setItem(LS.access, access);
+    else localStorage.removeItem(LS.access);
+    if (refresh) localStorage.setItem(LS.refresh, refresh);
+    else localStorage.removeItem(LS.refresh);
   },
 
   // update just access (e.g., on refresh)
-  setAccess: (access: string | null, persist = false) => {
+  setAccess: (access: string | null) => {
     inMemAccess = access;
-    if (persist && access) localStorage.setItem(LS.access, access);
+    if (access) localStorage.setItem(LS.access, access);
     else localStorage.removeItem(LS.access);
   },
 
   // update just refresh (e.g., on rotation)
-  setRefresh: (refresh: string | null, persist = false) => {
+  setRefresh: (refresh: string | null) => {
     inMemRefresh = refresh;
-    if (persist && refresh) localStorage.setItem(LS.refresh, refresh);
+    if (refresh) localStorage.setItem(LS.refresh, refresh);
     else localStorage.removeItem(LS.refresh);
   },
 

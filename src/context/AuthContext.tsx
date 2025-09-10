@@ -40,7 +40,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const accessRef = useRef<string | null>(null);
   const refreshRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
-  const rememberRef = useRef(false);
 
   const schedule = (token: string | null) => {
     if (refreshTimerRef.current) window.clearTimeout(refreshTimerRef.current);
@@ -56,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     accessRef.current = access;
     if (typeof refresh !== "undefined") refreshRef.current = refresh ?? null;
 
-    tokenStore.setBoth(access, refreshRef.current, rememberRef.current);
+    tokenStore.setBoth(access, refreshRef.current);
     schedule(access);
   };
 
@@ -81,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return newAccess;
   };
 
-  const login: AuthCtx["login"] = async (email, password, remember = false) => {
+  const login: AuthCtx["login"] = async (email, password, _remember = false) => {
     const { data } = await api.post(
       "/auth/login",
       { email, password },
@@ -91,7 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const a: string = data.access_token ?? data.accessToken;
     const r: string = data.refresh_token ?? data.refreshToken;
 
-    rememberRef.current = remember;
     setTokens(a, r);
     try {
       const m = await getMeta();
@@ -110,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
-    rememberRef.current = false;
     setTokens(null, null);
     setMeta(null);
     setUser(null);
@@ -219,10 +216,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         // 1) Try using any persisted refresh token to get a fresh access token
         const persisted = tokenStore.readPersisted();
-        if (persisted.refresh) {
-          rememberRef.current = true;
-          refreshRef.current = persisted.refresh;
-          await refresh(); // sets access & (rotated) refresh
+          if (persisted.refresh) {
+            refreshRef.current = persisted.refresh;
+            await refresh(); // sets access & (rotated) refresh
           try {
             const m = await getMeta();
             setMeta(m);
@@ -236,13 +232,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // 2) If we only have a persisted access (rare), use it until it expires
-        if (
-          persisted.access &&
-          (!getExpMs(persisted.access) ||
-            getExpMs(persisted.access)! > Date.now())
-        ) {
-          rememberRef.current = true;
-          setTokens(persisted.access, null);
+          if (
+            persisted.access &&
+            (!getExpMs(persisted.access) ||
+              getExpMs(persisted.access)! > Date.now())
+          ) {
+            setTokens(persisted.access, null);
           try {
             const m = await getMeta();
             setMeta(m);
