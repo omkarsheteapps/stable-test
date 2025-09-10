@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { getProjects } from "@/lib/projects";
-import type { App } from "@/types/app";
+import type { App, GetAppsResponse } from "@/types/app";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,10 +31,10 @@ function Apps() {
     if (!projectId) return;
     (async () => {
       try {
-        const { data } = await api.get("/apps", {
+        const { data } = await api.get<GetAppsResponse>("/apps", {
           params: { projectId },
         });
-        setApps(Array.isArray(data) ? data : []);
+        setApps(Array.isArray(data?.data) ? data.data : []);
       } catch {
         setApps([]);
       }
@@ -46,10 +46,10 @@ function Apps() {
     if (!projectId) return;
     try {
       await api.post("/apps", { projectId, name, description });
-      const { data } = await api.get("/apps", {
+      const { data } = await api.get<GetAppsResponse>("/apps", {
         params: { projectId },
       });
-      setApps(Array.isArray(data) ? data : []);
+      setApps(Array.isArray(data?.data) ? data.data : []);
       setOpen(false);
       setName("");
       setDescription("");
@@ -65,7 +65,7 @@ function Apps() {
       ) : (
         <ul className="space-y-2">
           {apps.map((a) => (
-            <li key={a.id} className="border p-2">
+            <li key={a.app_id} className="border p-2">
               {a.name}
             </li>
           ))}
