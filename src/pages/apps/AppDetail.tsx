@@ -1,6 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import Editor from "@monaco-editor/react";
+import { api } from "@/lib/api";
 
 interface TreeNode {
   name: string;
@@ -8,6 +25,15 @@ interface TreeNode {
   content?: string; // only for files
   children?: TreeNode[];
 }
+
+type VariableEntry = { key: string; value: string };
+
+const VARIABLE_CATEGORIES = [
+  { value: "xpaths", label: "Xpaths" },
+  { value: "userData", label: "User Data" },
+  { value: "queries", label: "Queries" },
+  { value: "hosts", label: "Hosts" },
+];
 
 function Tree({
   nodes,
@@ -62,6 +88,8 @@ function stringifyTree(nodes: TreeNode[], indent = 0): string {
 }
 
 export default function AppDetail() {
+  const { id } = useParams();
+  const appId = id ?? "";
   const [tree, setTree] = useState<TreeNode[]>([
     {
       name: "src",
@@ -71,6 +99,43 @@ export default function AppDetail() {
   ]);
   const [currentPath, setCurrentPath] = useState<TreeNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<TreeNode | null>(null);
+  const [activeCategory, setActiveCategory] = useState(
+    VARIABLE_CATEGORIES[0]?.value ?? "xpaths"
+  );
+  const [entriesByCategory, setEntriesByCategory] = useState<
+    Record<string, VariableEntry[]>
+  >(() =>
+    VARIABLE_CATEGORIES.reduce<Record<string, VariableEntry[]>>(
+      (acc, category) => {
+        acc[category.value] = [{ key: "", value: "" }];
+        return acc;
+      },
+      {}
+    )
+  );
+  const [saveStatus, setSaveStatus] = useState<
+    Record<string, { type: "idle" | "saving" | "success" | "error"; message?: string }>
+  >(() =>
+    VARIABLE_CATEGORIES.reduce(
+      (acc, category) => {
+        acc[category.value] = { type: "idle" as const };
+        return acc;
+      },
+      {} as Record<
+        string,
+        { type: "idle" | "saving" | "success" | "error"; message?: string }
+      >
+    )
+  );
+
+  const categoryLabel = useMemo(
+    () =>
+      VARIABLE_CATEGORIES.reduce<Record<string, string>>((acc, category) => {
+        acc[category.value] = category.label;
+        return acc;
+      }, {}),
+    []
+  );
 
   const currentFolder = currentPath[currentPath.length - 1];
   const nodes = currentFolder ? currentFolder.children || [] : tree;
@@ -122,6 +187,77 @@ export default function AppDetail() {
     alert("Feature saved!");
   };
 
+  const updateEntry = (
+    category: string,
+    index: number,
+    field: keyof VariableEntry,
+    value: string
+  ) => {
+    setEntriesByCategory((prev) => {
+      const next = { ...prev };
+      const entries = [...(next[category] ?? [])];
+      entries[index] = { ...entries[index], [field]: value };
+      next[category] = entries;
+      return next;
+    });
+  };
+
+  const addEntry = (category: string) => {
+    setEntriesByCategory((prev) => ({
+      ...prev,
+      [category]: [...(prev[category] ?? []), { key: "", value: "" }],
+    }));
+  };
+
+  const removeEntry = (category: string, index: number) => {
+    setEntriesByCategory((prev) => {
+      const nextEntries = [...(prev[category] ?? [])];
+      nextEntries.splice(index, 1);
+      return { ...prev, [category]: nextEntries.length ? nextEntries : [{ key: "", value: "" }] };
+    });
+  };
+
+  const saveVariables = async (category: string) => {
+    if (!appId) {
+      setSaveStatus((prev) => ({
+        ...prev,
+        [category]: { type: "error", message: "Missing app id in URL." },
+      }));
+      return;
+    }
+
+    const entries = (entriesByCategory[category] ?? []).filter(
+      (entry) => entry.key.trim() && entry.value.trim()
+    );
+
+    if (!entries.length) {
+      setSaveStatus((prev) => ({
+        ...prev,
+        [category]: { type: "error", message: "Add at least one key/value pair." },
+      }));
+      return;
+    }
+
+    try {
+      setSaveStatus((prev) => ({
+        ...prev,
+        [category]: { type: "saving", message: "Saving..." },
+      }));
+      await api.post(`/variables/apps/${appId}`, { category, entries });
+      setSaveStatus((prev) => ({
+        ...prev,
+        [category]: { type: "success", message: "Saved successfully." },
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to save variables.";
+      setSaveStatus((prev) => ({
+        ...prev,
+        [category]: { type: "error", message },
+      }));
+    }
+  };
+
   return (
     <div className="flex h-screen">
       {/* Left File Tree */}
@@ -132,6 +268,120 @@ export default function AppDetail() {
           <Button onClick={addFile}>Add File</Button>
           {selectedFile && <Button onClick={addScenario}>Add Scenario</Button>}
           <Button onClick={saveFeature}>Save</Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline">Manage Variables</Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Environment Variables</DialogTitle>
+                <DialogDescription>
+                  Store reusable variables for this app by category.
+                </DialogDescription>
+              </DialogHeader>
+              <Tabs value={activeCategory} onValueChange={setActiveCategory}>
+                <TabsList>
+                  {VARIABLE_CATEGORIES.map((category) => (
+                    <TabsTrigger key={category.value} value={category.value}>
+                      {category.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                {VARIABLE_CATEGORIES.map((category) => {
+                  const entries = entriesByCategory[category.value] ?? [];
+                  const status = saveStatus[category.value];
+                  return (
+                    <TabsContent key={category.value} value={category.value}>
+                      <div className="space-y-4">
+                        <p className="text-sm text-gray-500">
+                          Add key/value pairs for{" "}
+                          <span className="font-medium text-gray-700">
+                            {categoryLabel[category.value]}
+                          </span>
+                          .
+                        </p>
+                        <div className="space-y-3">
+                          {entries.map((entry, index) => (
+                            <div
+                              key={`${category.value}-${index}`}
+                              className="grid gap-3 md:grid-cols-[1fr_1.5fr_auto]"
+                            >
+                              <Input
+                                placeholder="Key"
+                                value={entry.key}
+                                onChange={(event) =>
+                                  updateEntry(
+                                    category.value,
+                                    index,
+                                    "key",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                              <textarea
+                                className="min-h-[42px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                placeholder="Value"
+                                value={entry.value}
+                                onChange={(event) =>
+                                  updateEntry(
+                                    category.value,
+                                    index,
+                                    "value",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="self-start"
+                                onClick={() =>
+                                  removeEntry(category.value, index)
+                                }
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => addEntry(category.value)}
+                          >
+                            Add entry
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => saveVariables(category.value)}
+                            disabled={status?.type === "saving"}
+                          >
+                            {status?.type === "saving"
+                              ? "Saving..."
+                              : `Save ${category.label}`}
+                          </Button>
+                        </div>
+                        {status?.message && (
+                          <p
+                            className={`text-sm ${
+                              status.type === "error"
+                                ? "text-red-600"
+                                : status.type === "success"
+                                ? "text-green-600"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {status.message}
+                          </p>
+                        )}
+                      </div>
+                    </TabsContent>
+                  );
+                })}
+              </Tabs>
+            </DialogContent>
+          </Dialog>
         </div>
         {currentPath.length > 0 && (
           <div
