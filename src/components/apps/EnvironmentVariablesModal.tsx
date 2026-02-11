@@ -204,23 +204,33 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
           Manage Variables
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Environment Variables</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="flex h-[78vh] max-h-[78vh] flex-col overflow-hidden border-[#d0d7de] bg-gradient-to-b from-white to-slate-50/60 p-0 sm:max-w-4xl">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle className="text-2xl font-semibold tracking-tight text-slate-900">
+            Environment Variables
+          </DialogTitle>
+          <DialogDescription className="text-sm text-slate-600">
             Configure reusable values grouped by category for this app.
           </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
-          <div className="flex min-h-52 items-center justify-center rounded-lg border border-dashed">
+          <div className="mx-6 mb-6 flex min-h-52 flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/80">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading values...
           </div>
         ) : (
-          <Tabs value={activeCategory} onValueChange={setActiveCategory} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
+          <Tabs
+            value={activeCategory}
+            onValueChange={setActiveCategory}
+            className="mx-6 mb-6 flex min-h-0 flex-1 flex-col space-y-4"
+          >
+            <TabsList className="grid w-full grid-cols-2 rounded-xl bg-slate-200/70 p-1 md:grid-cols-4">
               {VARIABLE_CATEGORIES.map((category) => (
-                <TabsTrigger key={category.value} value={category.value}>
+                <TabsTrigger
+                  key={category.value}
+                  value={category.value}
+                  className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
                   {category.label}
                 </TabsTrigger>
               ))}
@@ -230,16 +240,18 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
               const entries = entriesByCategory[category.value] ?? [];
               const status = saveStatus[category.value];
               return (
-                <TabsContent key={category.value} value={category.value}>
-                  <div className="space-y-4 rounded-xl border bg-slate-50/60 p-4">
+                <TabsContent key={category.value} value={category.value} className="min-h-0 flex-1">
+                  <div className="flex h-full min-h-0 flex-col space-y-4 rounded-xl border border-slate-300 bg-white/90 p-4 shadow-sm">
                     <p className="text-sm text-slate-600">
                       Add key/value pairs for <span className="font-semibold">{categoryLabel[category.value]}</span>.
                     </p>
-                    <div className="space-y-3">
+
+                    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                      <div className="space-y-3">
                       {entries.map((entry, index) => (
                         <div
                           key={`${category.value}-${index}`}
-                          className="grid gap-3 rounded-lg border bg-white p-3 md:grid-cols-[1fr_1.7fr_auto]"
+                          className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 md:grid-cols-[1fr_1.7fr_auto]"
                         >
                           <Input
                             placeholder="Key"
@@ -268,9 +280,10 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
                           </Button>
                         </div>
                       ))}
+                      </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3">
                       <Button type="button" variant="outline" onClick={() => addEntry(category.value)}>
                         <Plus className="mr-1 h-4 w-4" /> Add entry
                       </Button>

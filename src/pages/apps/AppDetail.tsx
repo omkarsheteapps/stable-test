@@ -149,14 +149,20 @@ export default function AppDetail() {
 
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
-      <header className="border-b border-[#d0d7de] bg-white px-4 py-4 sm:px-6">
+      <header className="border-b border-[#d0d7de] bg-gradient-to-r from-white via-[#f8fbff] to-[#eef7ff] px-4 py-4 shadow-sm sm:px-6">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#57606a]">Repository</p>
             <h1 className="text-xl font-semibold text-[#24292f]">app / {appId || "unknown"}</h1>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-3 py-1 text-sm text-[#57606a]">
-            <GitBranch className="h-4 w-4" /> main
+
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#d0d7de] bg-white/90 px-3 py-1 text-sm text-[#57606a]">
+              <GitBranch className="h-4 w-4" /> main
+            </div>
+            <div className="rounded-full border border-[#b6d4fe] bg-gradient-to-r from-[#1f6feb] via-[#218bff] to-[#54aeff] px-4 py-1.5 text-sm font-semibold tracking-wide text-white shadow-sm">
+              Stable Test
+            </div>
           </div>
         </div>
       </header>
