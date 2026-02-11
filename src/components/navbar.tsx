@@ -26,6 +26,7 @@ export default function Navbar() {
   return (
     <nav className="flex items-center justify-between border-b p-4">
       <div>
+        <div className="text-sm font-medium text-muted-foreground">Stable test</div>
         <div className="font-semibold">{userName}</div>
         {role && <div className="text-xs text-muted-foreground">{role}</div>}
       </div>
