@@ -1,71 +1,65 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { ChevronLeft, FileCode2, Folder, FolderPlus, PlusSquare, Save } from "lucide-react";
+import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import Editor from "@monaco-editor/react";
-import { api } from "@/lib/api";
+import { EnvironmentVariablesModal } from "@/components/apps/EnvironmentVariablesModal";
 
 interface TreeNode {
   name: string;
   type: "folder" | "file";
-  content?: string; // only for files
+  content?: string;
   children?: TreeNode[];
 }
 
-type VariableEntry = { key: string; value: string };
-
-const VARIABLE_CATEGORIES = [
-  { value: "xpaths", label: "Xpaths" },
-  { value: "userData", label: "User Data" },
-  { value: "queries", label: "Queries" },
-  { value: "hosts", label: "Hosts" },
-];
-
 function Tree({
   nodes,
+  selectedFileName,
   onFolderClick,
   onFileClick,
 }: {
   nodes: TreeNode[];
+  selectedFileName?: string;
   onFolderClick: (folder: TreeNode) => void;
   onFileClick: (file: TreeNode) => void;
 }) {
   return (
-    <ul className="ml-4">
-      {nodes.map((node, idx) => (
-        <li key={idx}>
-          <div
-            className="cursor-pointer hover:bg-gray-100 px-1 rounded"
-            onClick={() =>
-              node.type === "folder" ? onFolderClick(node) : onFileClick(node)
-            }
-          >
-            {node.type === "folder" ? "📁" : "📄"} {node.name}
-          </div>
-        </li>
-      ))}
+    <ul className="space-y-1">
+      {nodes.map((node) => {
+        const isSelected = node.type === "file" && selectedFileName === node.name;
+
+        return (
+          <li key={`${node.type}-${node.name}`}>
+            <button
+              type="button"
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition ${
+                isSelected
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+              onClick={() =>
+                node.type === "folder" ? onFolderClick(node) : onFileClick(node)
+              }
+            >
+              {node.type === "folder" ? (
+                <Folder className="h-4 w-4 text-amber-500" />
+              ) : (
+                <FileCode2 className="h-4 w-4 text-indigo-500" />
+              )}
+              <span className="truncate">{node.name}</span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-// Helper: walk structure and stringify for API
 function stringifyTree(nodes: TreeNode[], indent = 0): string {
   let result = "";
   const pad = "  ".repeat(indent);
+
   for (const node of nodes) {
     if (node.type === "folder") {
       result += `${pad}[Folder] ${node.name}\n`;
@@ -75,340 +69,166 @@ function stringifyTree(nodes: TreeNode[], indent = 0): string {
     } else {
       result += `${pad}[File] ${node.name}\n`;
       if (node.content) {
-        // indent file content properly
         const content = node.content
           .split("\n")
           .map((line) => `${pad}  ${line}`)
           .join("\n");
-        result += content + "\n";
+        result += `${content}\n`;
       }
     }
   }
+
   return result;
 }
 
 export default function AppDetail() {
   const { id } = useParams();
   const appId = id ?? "";
-  const [tree, setTree] = useState<TreeNode[]>([
-    {
-      name: "src",
-      type: "folder",
-      children: [],
-    },
-  ]);
+  const [tree, setTree] = useState<TreeNode[]>([{ name: "src", type: "folder", children: [] }]);
   const [currentPath, setCurrentPath] = useState<TreeNode[]>([]);
   const [selectedFile, setSelectedFile] = useState<TreeNode | null>(null);
-  const [activeCategory, setActiveCategory] = useState(
-    VARIABLE_CATEGORIES[0]?.value ?? "xpaths"
-  );
-  const [entriesByCategory, setEntriesByCategory] = useState<
-    Record<string, VariableEntry[]>
-  >(() =>
-    VARIABLE_CATEGORIES.reduce<Record<string, VariableEntry[]>>(
-      (acc, category) => {
-        acc[category.value] = [{ key: "", value: "" }];
-        return acc;
-      },
-      {}
-    )
-  );
-  const [saveStatus, setSaveStatus] = useState<
-    Record<string, { type: "idle" | "saving" | "success" | "error"; message?: string }>
-  >(() =>
-    VARIABLE_CATEGORIES.reduce(
-      (acc, category) => {
-        acc[category.value] = { type: "idle" as const };
-        return acc;
-      },
-      {} as Record<
-        string,
-        { type: "idle" | "saving" | "success" | "error"; message?: string }
-      >
-    )
-  );
-
-  const categoryLabel = useMemo(
-    () =>
-      VARIABLE_CATEGORIES.reduce<Record<string, string>>((acc, category) => {
-        acc[category.value] = category.label;
-        return acc;
-      }, {}),
-    []
-  );
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFileName, setNewFileName] = useState("");
 
   const currentFolder = currentPath[currentPath.length - 1];
   const nodes = currentFolder ? currentFolder.children || [] : tree;
+  const activePathLabel = currentPath.length
+    ? `/${currentPath.map((node) => node.name).join("/")}`
+    : "/";
 
   const updateTree = (updater: (folder: TreeNode[]) => TreeNode[]) => {
     if (currentFolder) {
       currentFolder.children = updater(currentFolder.children || []);
       setTree([...tree]);
-    } else {
-      setTree(updater(tree));
+      return;
     }
+    setTree(updater(tree));
   };
 
   const addFolder = () => {
-    const name = window.prompt("Folder name");
-    if (!name) return;
-    updateTree((list) => [...list, { name, type: "folder", children: [] }]);
+    const clean = newFolderName.trim();
+    if (!clean) return;
+    updateTree((list) => [...list, { name: clean, type: "folder", children: [] }]);
+    setNewFolderName("");
   };
 
   const addFile = () => {
-    const name = window.prompt("File name (ex: test.feature)");
-    if (!name) return;
+    const clean = newFileName.trim();
+    if (!clean) return;
     updateTree((list) => [
       ...list,
-      { name, type: "file", content: "Feature: \n\n  Scenario: \n" },
+      { name: clean, type: "file", content: "Feature: \n\n  Scenario: \n" },
     ]);
+    setNewFileName("");
   };
 
   const addScenario = () => {
     if (!selectedFile) return;
-    const scenarioTemplate =
-      `\n  Scenario: New scenario\n` +
-      `    Given some precondition\n` +
-      `    When some action happens\n` +
-      `    Then expect some outcome\n`;
-    selectedFile.content = (selectedFile.content || "") + scenarioTemplate;
+    selectedFile.content =
+      (selectedFile.content || "") +
+      "\n  Scenario: New scenario\n    Given some precondition\n    When some action happens\n    Then expect some outcome\n";
     setTree([...tree]);
   };
 
   const saveFeature = async () => {
     const payload = stringifyTree(tree);
-    console.log("Sending to API:\n", payload);
-
     await fetch("/api/save-feature", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ structure: payload }),
     });
-    alert("Feature saved!");
-  };
-
-  const updateEntry = (
-    category: string,
-    index: number,
-    field: keyof VariableEntry,
-    value: string
-  ) => {
-    setEntriesByCategory((prev) => {
-      const next = { ...prev };
-      const entries = [...(next[category] ?? [])];
-      entries[index] = { ...entries[index], [field]: value };
-      next[category] = entries;
-      return next;
-    });
-  };
-
-  const addEntry = (category: string) => {
-    setEntriesByCategory((prev) => ({
-      ...prev,
-      [category]: [...(prev[category] ?? []), { key: "", value: "" }],
-    }));
-  };
-
-  const removeEntry = (category: string, index: number) => {
-    setEntriesByCategory((prev) => {
-      const nextEntries = [...(prev[category] ?? [])];
-      nextEntries.splice(index, 1);
-      return { ...prev, [category]: nextEntries.length ? nextEntries : [{ key: "", value: "" }] };
-    });
-  };
-
-  const saveVariables = async (category: string) => {
-    if (!appId) {
-      setSaveStatus((prev) => ({
-        ...prev,
-        [category]: { type: "error", message: "Missing app id in URL." },
-      }));
-      return;
-    }
-
-    const entries = (entriesByCategory[category] ?? []).filter(
-      (entry) => entry.key.trim() && entry.value.trim()
-    );
-
-    if (!entries.length) {
-      setSaveStatus((prev) => ({
-        ...prev,
-        [category]: { type: "error", message: "Add at least one key/value pair." },
-      }));
-      return;
-    }
-
-    try {
-      setSaveStatus((prev) => ({
-        ...prev,
-        [category]: { type: "saving", message: "Saving..." },
-      }));
-      await api.post(`/variables/apps/${appId}`, { category, entries });
-      setSaveStatus((prev) => ({
-        ...prev,
-        [category]: { type: "success", message: "Saved successfully." },
-      }));
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to save variables.";
-      setSaveStatus((prev) => ({
-        ...prev,
-        [category]: { type: "error", message },
-      }));
-    }
+    window.alert("Feature saved!");
   };
 
   return (
-    <div className="flex h-screen">
-      {/* Left File Tree */}
-      <div className="w-1/3 border-r p-4">
-        <h1 className="mb-4 text-xl font-bold">File Explorer</h1>
-        <div className="mb-4 flex gap-2 flex-wrap">
-          <Button onClick={addFolder}>Add Folder</Button>
-          <Button onClick={addFile}>Add File</Button>
-          {selectedFile && <Button onClick={addScenario}>Add Scenario</Button>}
-          <Button onClick={saveFeature}>Save</Button>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline">Manage Variables</Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Environment Variables</DialogTitle>
-                <DialogDescription>
-                  Store reusable variables for this app by category.
-                </DialogDescription>
-              </DialogHeader>
-              <Tabs value={activeCategory} onValueChange={setActiveCategory}>
-                <TabsList>
-                  {VARIABLE_CATEGORIES.map((category) => (
-                    <TabsTrigger key={category.value} value={category.value}>
-                      {category.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {VARIABLE_CATEGORIES.map((category) => {
-                  const entries = entriesByCategory[category.value] ?? [];
-                  const status = saveStatus[category.value];
-                  return (
-                    <TabsContent key={category.value} value={category.value}>
-                      <div className="space-y-4">
-                        <p className="text-sm text-gray-500">
-                          Add key/value pairs for{" "}
-                          <span className="font-medium text-gray-700">
-                            {categoryLabel[category.value]}
-                          </span>
-                          .
-                        </p>
-                        <div className="space-y-3">
-                          {entries.map((entry, index) => (
-                            <div
-                              key={`${category.value}-${index}`}
-                              className="grid gap-3 md:grid-cols-[1fr_1.5fr_auto]"
-                            >
-                              <Input
-                                placeholder="Key"
-                                value={entry.key}
-                                onChange={(event) =>
-                                  updateEntry(
-                                    category.value,
-                                    index,
-                                    "key",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                              <textarea
-                                className="min-h-[42px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                                placeholder="Value"
-                                value={entry.value}
-                                onChange={(event) =>
-                                  updateEntry(
-                                    category.value,
-                                    index,
-                                    "value",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                className="self-start"
-                                onClick={() =>
-                                  removeEntry(category.value, index)
-                                }
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => addEntry(category.value)}
-                          >
-                            Add entry
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => saveVariables(category.value)}
-                            disabled={status?.type === "saving"}
-                          >
-                            {status?.type === "saving"
-                              ? "Saving..."
-                              : `Save ${category.label}`}
-                          </Button>
-                        </div>
-                        {status?.message && (
-                          <p
-                            className={`text-sm ${
-                              status.type === "error"
-                                ? "text-red-600"
-                                : status.type === "success"
-                                ? "text-green-600"
-                                : "text-gray-500"
-                            }`}
-                          >
-                            {status.message}
-                          </p>
-                        )}
-                      </div>
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            </DialogContent>
-          </Dialog>
+    <div className="flex h-screen bg-slate-100">
+      <aside className="flex w-[420px] flex-col border-r border-slate-200 bg-white p-5">
+        <div className="mb-4">
+          <h1 className="text-2xl font-semibold text-slate-900">Automation Workspace</h1>
+          <p className="mt-1 text-sm text-slate-500">Manage files, scenarios, and environment data.</p>
         </div>
-        {currentPath.length > 0 && (
-          <div
-            className="cursor-pointer mb-2 text-blue-600"
-            onClick={() => setCurrentPath(currentPath.slice(0, -1))}
-          >
-            🔙 ..
-          </div>
-        )}
-        {nodes.length === 0 ? (
-          <p>No files yet</p>
-        ) : (
-          <Tree
-            nodes={nodes}
-            onFolderClick={(folder) => setCurrentPath([...currentPath, folder])}
-            onFileClick={(file) => setSelectedFile(file)}
-          />
-        )}
-      </div>
 
-      {/* Right Editor */}
-      <div className="flex-1 p-4">
-        {selectedFile ? (
-          <>
-            <h2 className="mb-2 font-semibold">Editing: {selectedFile.name}</h2>
+        <div className="mb-4 rounded-lg border bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Current path</p>
+          <p className="truncate text-sm font-medium text-slate-800">{activePathLabel}</p>
+          {currentPath.length > 0 && (
+            <Button
+              variant="ghost"
+              className="mt-2 h-8 px-2 text-slate-700"
+              onClick={() => setCurrentPath(currentPath.slice(0, -1))}
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" /> Back to parent
+            </Button>
+          )}
+        </div>
+
+        <div className="mb-4 space-y-2 rounded-lg border bg-white p-3 shadow-sm">
+          <div className="flex gap-2">
+            <Input
+              placeholder="New folder"
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+            />
+            <Button onClick={addFolder}>
+              <FolderPlus className="mr-1 h-4 w-4" /> Add
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="New file (e.g. test.feature)"
+              value={newFileName}
+              onChange={(event) => setNewFileName(event.target.value)}
+            />
+            <Button onClick={addFile}>
+              <PlusSquare className="mr-1 h-4 w-4" /> Add
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button onClick={saveFeature}>
+              <Save className="mr-1 h-4 w-4" /> Save Structure
+            </Button>
+            {selectedFile && (
+              <Button variant="outline" onClick={addScenario}>
+                Add Scenario
+              </Button>
+            )}
+            <EnvironmentVariablesModal appId={appId} />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-white p-3 shadow-sm">
+          {nodes.length === 0 ? (
+            <p className="text-sm text-slate-500">No files yet. Add folders or files to get started.</p>
+          ) : (
+            <Tree
+              nodes={nodes}
+              selectedFileName={selectedFile?.name}
+              onFolderClick={(folder) => {
+                setCurrentPath([...currentPath, folder]);
+                setSelectedFile(null);
+              }}
+              onFileClick={(file) => setSelectedFile(file)}
+            />
+          )}
+        </div>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col p-5">
+        <div className="mb-3 rounded-lg border bg-white px-4 py-3 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {selectedFile ? `Editing: ${selectedFile.name}` : "Editor"}
+          </h2>
+          <p className="text-sm text-slate-500">
+            {selectedFile
+              ? "Make updates to your feature file and save your structure when ready."
+              : "Select a file from the explorer to start editing."}
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-[#1e1e1e] shadow-lg">
+          {selectedFile ? (
             <Editor
-              height="90vh"
+              height="100%"
               defaultLanguage="gherkin"
               value={selectedFile.content}
               onChange={(value) => {
@@ -418,12 +238,20 @@ export default function AppDetail() {
                 }
               }}
               theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                scrollBeyondLastLine: false,
+                padding: { top: 16 },
+              }}
             />
-          </>
-        ) : (
-          <p className="text-gray-500">Select a file to start editing</p>
-        )}
-      </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-slate-300">
+              Select a file from the left panel to begin.
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
