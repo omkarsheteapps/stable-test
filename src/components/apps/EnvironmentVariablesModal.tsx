@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,11 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
     []
   );
 
+  useEffect(() => {
+    if (!open) return;
+    void loadVariables();
+  }, [open, appId]);
+
   const loadVariables = async () => {
     if (!appId) {
       setSaveStatus((prev) => ({
@@ -193,15 +198,7 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (nextOpen) {
-          void loadVariables();
-        }
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="bg-white/90">
           Manage Variables
