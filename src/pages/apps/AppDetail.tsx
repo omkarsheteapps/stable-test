@@ -23,12 +23,23 @@ const DEFAULT_FEATURE_CONTENT = "Feature: New Feature\n\nScenario: New Scenario\
 let languageRegistered = false;
 let completionProviderDisposable: MonacoApi.IDisposable | null = null;
 
+function normalizeStepPattern(step: string) {
+  return step.replace(/\s+/g, " ").trim();
+}
+
 function flattenSteps(response: unknown): string[] {
   const buckets = (response as { data?: { steps?: Record<string, string[]> } })?.data?.steps;
   if (!buckets) return [];
-  const all = new Set<string>();
-  Object.values(buckets).forEach((list) => list.forEach((item) => all.add(item)));
-  return [...all];
+  const all = new Map<string, string>();
+  Object.values(buckets).forEach((list) =>
+    list.forEach((item) => {
+      const normalized = normalizeStepPattern(item);
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (!all.has(key)) all.set(key, normalized);
+    }),
+  );
+  return [...all.values()];
 }
 
 function buildStepSnippet(keyword: StepKeyword, pattern: string): string {
@@ -202,7 +213,15 @@ function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
       if (keywordMatch) {
         const activeKeyword = keywordMatch[1] as StepKeyword;
         const query = keywordMatch[2] ?? "";
+        const seen = new Set<string>();
         const filtered = stepsRef.current
+          .map((step) => normalizeStepPattern(step))
+          .filter((step) => {
+            const key = step.toLowerCase();
+            if (!step || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
           .map((step) => ({ step, score: fuzzyScore(query, step) }))
           .filter((entry): entry is { step: string; score: number } => entry.score !== null)
           .sort((a, b) => a.score - b.score)
