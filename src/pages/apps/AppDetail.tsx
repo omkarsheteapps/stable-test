@@ -20,6 +20,8 @@ const LANGUAGE_ID = "gherkin-controlled";
 const PLACEHOLDER_REGEX = /\{(string|int|double|long)\}/g;
 const KEYWORD_SNIPPETS = ["Feature:", "Scenario:", "Given", "When", "Then", "And"];
 const DEFAULT_FEATURE_CONTENT = "Feature: New Feature\n\nScenario: New Scenario\n  Given ";
+let languageRegistered = false;
+let completionProviderDisposable: MonacoApi.IDisposable | null = null;
 
 function flattenSteps(response: unknown): string[] {
   const buckets = (response as { data?: { steps?: Record<string, string[]> } })?.data?.steps;
@@ -127,41 +129,46 @@ function validateModel(model: MonacoApi.editor.ITextModel, monaco: Monaco): Mona
 }
 
 function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
-  monaco.languages.register({ id: LANGUAGE_ID });
-  monaco.languages.setLanguageConfiguration(LANGUAGE_ID, {
-    autoClosingPairs: [{ open: '"', close: '"' }],
-    onEnterRules: [
-      {
-        beforeText: /^\s*Scenario:\s.*$/,
-        action: { indentAction: monaco.languages.IndentAction.Indent },
-      },
-    ],
-  });
-
-  monaco.languages.setMonarchTokensProvider(LANGUAGE_ID, {
-    tokenizer: {
-      root: [
-        [/^\s*Feature:/, "keyword.feature"],
-        [/^\s*Scenario:/, "keyword.scenario"],
-        [/^\s*(Given|When|Then|And|But)\b/, "keyword.step"],
-        [/\{(string|int|double|long)\}/, "type.identifier"],
+  if (!languageRegistered) {
+    monaco.languages.register({ id: LANGUAGE_ID });
+    monaco.languages.setLanguageConfiguration(LANGUAGE_ID, {
+      autoClosingPairs: [{ open: '"', close: '"' }],
+      onEnterRules: [
+        {
+          beforeText: /^\s*Scenario:\s.*$/,
+          action: { indentAction: monaco.languages.IndentAction.Indent },
+        },
       ],
-    },
-  });
+    });
 
-  monaco.editor.defineTheme("gherkinControlledTheme", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "keyword.feature", foreground: "7f3fbf", fontStyle: "bold" },
-      { token: "keyword.scenario", foreground: "005cc5", fontStyle: "bold" },
-      { token: "keyword.step", foreground: "0a7d34", fontStyle: "bold" },
-      { token: "type.identifier", foreground: "b26a00" },
-    ],
-    colors: {},
-  });
+    monaco.languages.setMonarchTokensProvider(LANGUAGE_ID, {
+      tokenizer: {
+        root: [
+          [/^\s*Feature:/, "keyword.feature"],
+          [/^\s*Scenario:/, "keyword.scenario"],
+          [/^\s*(Given|When|Then|And|But)\b/, "keyword.step"],
+          [/\{(string|int|double|long)\}/, "type.identifier"],
+        ],
+      },
+    });
 
-  monaco.languages.registerCompletionItemProvider(LANGUAGE_ID, {
+    monaco.editor.defineTheme("gherkinControlledTheme", {
+      base: "vs",
+      inherit: true,
+      rules: [
+        { token: "keyword.feature", foreground: "7f3fbf", fontStyle: "bold" },
+        { token: "keyword.scenario", foreground: "005cc5", fontStyle: "bold" },
+        { token: "keyword.step", foreground: "0a7d34", fontStyle: "bold" },
+        { token: "type.identifier", foreground: "b26a00" },
+      ],
+      colors: {},
+    });
+
+    languageRegistered = true;
+  }
+
+  completionProviderDisposable?.dispose();
+  completionProviderDisposable = monaco.languages.registerCompletionItemProvider(LANGUAGE_ID, {
     triggerCharacters: [" ", "G", "W", "T", "S", "F", "A", "B", "g", "w", "t", "s", "f", "a", "b"],
     provideCompletionItems(model, position) {
       const linePrefix = model.getValueInRange({
@@ -218,7 +225,12 @@ function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
         );
       }
 
-      return { suggestions };
+      const uniqueSuggestions = suggestions.filter((item, index, all) => {
+        const key = `${item.label}-${item.insertText}`;
+        return index === all.findIndex((candidate) => `${candidate.label}-${candidate.insertText}` === key);
+      });
+
+      return { suggestions: uniqueSuggestions };
     },
   });
 }
@@ -291,6 +303,36 @@ export default function AppDetail() {
     ]);
     editor.focus();
     editor.trigger("gherkin-controls", "editor.action.triggerSuggest", {});
+  };
+
+  const insertScenarioAtEnd = () => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) return;
+
+    const content = model.getValue();
+    const prefix = content.trim().length === 0 ? "" : "\n\n";
+    const insertion = `${prefix}Scenario: New Scenario\n  Given `;
+    const lastLine = model.getLineCount();
+    const lastColumn = model.getLineMaxColumn(lastLine);
+
+    editor.executeEdits("gherkin-controls", [
+      {
+        range: {
+          startLineNumber: lastLine,
+          startColumn: lastColumn,
+          endLineNumber: lastLine,
+          endColumn: lastColumn,
+        },
+        text: insertion,
+        forceMoveMarkers: true,
+      },
+    ]);
+
+    const endPosition = model.getPositionAt(model.getValueLength());
+    editor.setPosition(endPosition);
+    editor.revealPositionInCenter(endPosition);
+    editor.focus();
   };
 
   const createFolder = () => {
@@ -382,7 +424,7 @@ export default function AppDetail() {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <EnvironmentVariablesModal appId={appId} />
 
-            <Button size="sm" onClick={() => insertAtCursor("Scenario: New Scenario\n  ")}>
+            <Button size="sm" onClick={insertScenarioAtEnd}>
               <PlusSquare className="mr-2 h-4 w-4" />
               Add Scenario
             </Button>
