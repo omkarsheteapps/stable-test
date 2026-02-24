@@ -117,7 +117,7 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
 
     try {
       setIsLoading(true);
-      const response = await api.get(`/environments/apps/${appId}`);
+      const response = await api.get(`/variables/apps/${appId}`);
       setEntriesByCategory(normalizeEntries(response.data));
       setSaveStatus(createInitialStatus());
     } catch (error) {
@@ -188,7 +188,7 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
         [category]: { type: "saving", message: "Saving..." },
       }));
 
-      await api.post(`/environments/apps/${appId}`, {
+      await api.post(`/variables/apps/${appId}`, {
         category,
         entries: payloadByCategory[category],
       });
