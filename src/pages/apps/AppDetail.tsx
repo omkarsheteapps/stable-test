@@ -118,8 +118,16 @@ function buildStepSnippet(keyword: StepKeyword, pattern: string): string {
 }
 
 function fuzzyScore(query: string, value: string) {
-  const q = query.toLowerCase().trim();
-  const v = value.toLowerCase();
+  const q = query
+    .toLowerCase()
+    .replace(/[^\w\s{}"]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const v = value
+    .toLowerCase()
+    .replace(/[^\w\s{}"]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!q) return 0;
   if (v.includes(q)) return v.indexOf(q);
 
@@ -245,7 +253,7 @@ function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
 
   completionProviderDisposable?.dispose();
   completionProviderDisposable = monaco.languages.registerCompletionItemProvider(LANGUAGE_ID, {
-    triggerCharacters: [" ", "G", "W", "T", "S", "F", "A", "B", "g", "w", "t", "s", "f", "a", "b"],
+    triggerCharacters: [" ", ".", "G", "W", "T", "S", "F", "A", "B", "g", "w", "t", "s", "f", "a", "b"],
     provideCompletionItems(model, position) {
       const linePrefix = model.getValueInRange({
         startLineNumber: position.lineNumber,
@@ -310,8 +318,8 @@ function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
       }
 
       const uniqueSuggestions = suggestions.filter((item, index, all) => {
-        const key = `${item.label}-${item.insertText}`;
-        return index === all.findIndex((candidate) => `${candidate.label}-${candidate.insertText}` === key);
+        const key = normalizeStepPattern(String(item.label)).toLowerCase();
+        return index === all.findIndex((candidate) => normalizeStepPattern(String(candidate.label)).toLowerCase() === key);
       });
 
       return { suggestions: uniqueSuggestions };
