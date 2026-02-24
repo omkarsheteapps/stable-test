@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import axios from "axios";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -188,7 +189,6 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
       }));
 
       await api.post(`/environments/apps/${appId}`, {
-        ...payloadByCategory,
         category,
         entries: payloadByCategory[category],
       });
@@ -202,7 +202,11 @@ export function EnvironmentVariablesModal({ appId }: EnvironmentVariablesModalPr
         [category]: { type: "success", message: "Saved successfully." },
       }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save variables.";
+      const message = axios.isAxiosError(error)
+        ? (error.response?.data?.message as string | undefined) || error.message
+        : error instanceof Error
+          ? error.message
+          : "Unable to save variables.";
       setSaveStatus((prev) => ({
         ...prev,
         [category]: { type: "error", message },
