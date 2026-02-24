@@ -2,15 +2,24 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
 import type * as MonacoApi from "monaco-editor";
 import { useParams } from "react-router-dom";
-import { PlusSquare, Sparkles } from "lucide-react";
+import { FolderPlus, PlusSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { EnvironmentVariablesModal } from "@/components/apps/EnvironmentVariablesModal";
 
 type StepKeyword = "Given" | "When" | "Then" | "And" | "But";
+type TreeItem = {
+  id: string;
+  name: string;
+  path: string;
+  type: "folder" | "file";
+};
 
 const LANGUAGE_ID = "gherkin-controlled";
 const PLACEHOLDER_REGEX = /\{(string|int|double|long)\}/g;
 const KEYWORD_SNIPPETS = ["Feature:", "Scenario:", "Given", "When", "Then", "And"];
+const DEFAULT_FEATURE_CONTENT = "Feature: New Feature\n\nScenario: New Scenario\n  Given ";
 
 function flattenSteps(response: unknown): string[] {
   const buckets = (response as { data?: { steps?: Record<string, string[]> } })?.data?.steps;
@@ -119,7 +128,6 @@ function validateModel(model: MonacoApi.editor.ITextModel, monaco: Monaco): Mona
 
 function registerLanguage(monaco: Monaco, stepsRef: RefObject<string[]>) {
   monaco.languages.register({ id: LANGUAGE_ID });
-
   monaco.languages.setLanguageConfiguration(LANGUAGE_ID, {
     autoClosingPairs: [{ open: '"', close: '"' }],
     onEnterRules: [
@@ -219,8 +227,12 @@ export default function AppDetail() {
   const { id } = useParams();
   const appId = id ?? "";
   const [steps, setSteps] = useState<string[]>([]);
-  const [value, setValue] = useState("Feature: New Feature\n\nScenario: New Scenario\n  Given ");
   const [showStepPicker, setShowStepPicker] = useState(false);
+  const [items, setItems] = useState<TreeItem[]>([]);
+  const [selectedFilePath, setSelectedFilePath] = useState("");
+  const [fileContents, setFileContents] = useState<Record<string, string>>({});
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFileName, setNewFileName] = useState("");
   const editorRef = useRef<MonacoApi.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const initializedRef = useRef(false);
@@ -232,9 +244,26 @@ export default function AppDetail() {
 
   useEffect(() => {
     if (!appId) return;
-    void api.get(`/steps/apps/${appId}`).then((response) => {
-      setSteps(flattenSteps(response.data));
-    }).catch(() => setSteps([]));
+    void api
+      .get(`/steps/apps/${appId}`)
+      .then((response) => {
+        setSteps(flattenSteps(response.data));
+      })
+      .catch(() => setSteps([]));
+  }, [appId]);
+
+  useEffect(() => {
+    const root: TreeItem = { id: "folder-features", name: "features", path: "features", type: "folder" };
+    const starterPath = "features/main.feature";
+    const starterFile: TreeItem = {
+      id: "file-features-main-feature",
+      name: "main.feature",
+      path: starterPath,
+      type: "file",
+    };
+    setItems([root, starterFile]);
+    setSelectedFilePath(starterPath);
+    setFileContents({ [starterPath]: DEFAULT_FEATURE_CONTENT });
   }, [appId]);
 
   const validate = useMemo(() => {
@@ -248,16 +277,44 @@ export default function AppDetail() {
     };
   }, []);
 
+  const selectedContent = fileContents[selectedFilePath] ?? "";
+
   const insertAtCursor = (text: string) => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.executeEdits("gherkin-controls", [{
-      range: editor.getSelection() ?? editor.getModel()!.getFullModelRange(),
-      text,
-      forceMoveMarkers: true,
-    }]);
+    editor.executeEdits("gherkin-controls", [
+      {
+        range: editor.getSelection() ?? editor.getModel()!.getFullModelRange(),
+        text,
+        forceMoveMarkers: true,
+      },
+    ]);
     editor.focus();
     editor.trigger("gherkin-controls", "editor.action.triggerSuggest", {});
+  };
+
+  const createFolder = () => {
+    const folder = newFolderName.trim();
+    if (!folder) return;
+    if (items.some((item) => item.path === folder)) return;
+    setItems((prev) => [...prev, { id: `folder-${folder}`, name: folder, path: folder, type: "folder" }]);
+    setNewFolderName("");
+  };
+
+  const createFeatureFile = () => {
+    const fileName = newFileName.trim();
+    if (!fileName) return;
+    const normalized = fileName.endsWith(".feature") ? fileName : `${fileName}.feature`;
+    const fullPath = `features/${normalized}`;
+    if (items.some((item) => item.path === fullPath)) return;
+
+    setItems((prev) => [
+      ...prev,
+      { id: `file-${fullPath.replace(/[^a-z0-9]/gi, "-")}`, name: normalized, path: fullPath, type: "file" },
+    ]);
+    setFileContents((prev) => ({ ...prev, [fullPath]: DEFAULT_FEATURE_CONTENT }));
+    setSelectedFilePath(fullPath);
+    setNewFileName("");
   };
 
   const onMount: OnMount = (editor, monaco) => {
@@ -270,11 +327,7 @@ export default function AppDetail() {
     monaco.editor.setTheme("gherkinControlledTheme");
     const model = editor.getModel();
     if (model) monaco.editor.setModelLanguage(model, LANGUAGE_ID);
-
-    editor.onDidChangeModelContent(() => {
-      validate();
-    });
-
+    editor.onDidChangeModelContent(() => validate());
     validate();
   };
 
@@ -285,53 +338,97 @@ export default function AppDetail() {
         <p className="text-sm text-[#57606a]">App {appId || "unknown"} • Monaco DSL editor with controlled suggestions.</p>
       </header>
 
-      <div className="rounded border border-[#d0d7de] bg-white p-3">
-        <div className="mb-3 flex items-center gap-2">
-          <Button size="sm" onClick={() => insertAtCursor("Scenario: New Scenario\n  ")}>
-            <PlusSquare className="mr-2 h-4 w-4" />
-            Add Scenario
-          </Button>
+      <div className="grid flex-1 gap-4 lg:grid-cols-[280px_1fr]">
+        <aside className="rounded border border-[#d0d7de] bg-white p-3">
+          <p className="mb-2 text-sm font-semibold text-[#24292f]">Feature workspace</p>
 
-          <Button size="sm" variant="outline" onClick={() => setShowStepPicker((open) => !open)}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Add Step
-          </Button>
+          <div className="mb-3 grid gap-2">
+            <Input placeholder="new-folder" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} />
+            <Button size="sm" variant="outline" onClick={createFolder}>
+              <FolderPlus className="mr-2 h-4 w-4" /> Create folder
+            </Button>
+            <Input
+              placeholder="new-feature-file"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+            />
+            <Button size="sm" onClick={createFeatureFile}>
+              <PlusSquare className="mr-2 h-4 w-4" /> Create feature file
+            </Button>
+          </div>
 
-          {showStepPicker && (
-            <div className="inline-flex items-center gap-2 rounded border border-[#d0d7de] px-2 py-1">
-              {(["Given", "When", "Then"] as const).map((keyword) => (
-                <Button
-                  key={keyword}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    insertAtCursor(`${keyword} `);
-                    setShowStepPicker(false);
-                  }}
-                >
-                  {keyword}
-                </Button>
-              ))}
-            </div>
-          )}
+          <div className="space-y-1">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={item.type === "folder"}
+                onClick={() => item.type === "file" && setSelectedFilePath(item.path)}
+                className={`w-full rounded px-2 py-1 text-left text-sm ${
+                  item.type === "folder"
+                    ? "cursor-default bg-[#f6f8fa] font-semibold text-[#57606a]"
+                    : selectedFilePath === item.path
+                    ? "bg-[#ddf4ff] text-[#0969da]"
+                    : "hover:bg-[#f6f8fa]"
+                }`}
+              >
+                {item.type === "folder" ? "📁" : "📄"} {item.name}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="rounded border border-[#d0d7de] bg-white p-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <EnvironmentVariablesModal appId={appId} />
+
+            <Button size="sm" onClick={() => insertAtCursor("Scenario: New Scenario\n  ")}>
+              <PlusSquare className="mr-2 h-4 w-4" />
+              Add Scenario
+            </Button>
+
+            <Button size="sm" variant="outline" onClick={() => setShowStepPicker((open) => !open)}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              Add Step
+            </Button>
+
+            {showStepPicker && (
+              <div className="inline-flex items-center gap-2 rounded border border-[#d0d7de] px-2 py-1">
+                {(["Given", "When", "Then"] as const).map((keyword) => (
+                  <Button
+                    key={keyword}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      insertAtCursor(`${keyword} `);
+                      setShowStepPicker(false);
+                    }}
+                  >
+                    {keyword}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Editor
+            key={selectedFilePath}
+            height="70vh"
+            defaultLanguage={LANGUAGE_ID}
+            value={selectedContent}
+            onChange={(next) => setFileContents((prev) => ({ ...prev, [selectedFilePath]: next ?? "" }))}
+            onMount={onMount}
+            options={{
+              minimap: { enabled: false },
+              quickSuggestions: { other: true, comments: false, strings: true },
+              suggestOnTriggerCharacters: true,
+              autoIndent: "advanced",
+              tabCompletion: "on",
+              formatOnType: true,
+              wordBasedSuggestions: "off",
+            }}
+          />
         </div>
-
-        <Editor
-          height="70vh"
-          defaultLanguage={LANGUAGE_ID}
-          value={value}
-          onChange={(next) => setValue(next ?? "")}
-          onMount={onMount}
-          options={{
-            minimap: { enabled: false },
-            quickSuggestions: { other: true, comments: false, strings: true },
-            suggestOnTriggerCharacters: true,
-            autoIndent: "advanced",
-            tabCompletion: "on",
-            formatOnType: true,
-            wordBasedSuggestions: "off",
-          }}
-        />
       </div>
     </div>
   );
