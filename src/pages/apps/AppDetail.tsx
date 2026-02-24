@@ -23,6 +23,71 @@ const DEFAULT_FEATURE_CONTENT = "Feature: New Feature\n\nScenario: New Scenario\
 let languageRegistered = false;
 let completionProviderDisposable: MonacoApi.IDisposable | null = null;
 
+function normalizePathSegment(value: string) {
+  return value.trim().replace(/^\/+|\/+$/g, "");
+}
+
+function normalizeFolderPath(path: string) {
+  return path
+    .split("/")
+    .map((segment) => normalizePathSegment(segment))
+    .filter(Boolean)
+    .join("/");
+}
+
+function toItemId(type: TreeItem["type"], path: string) {
+  return `${type}-${path.replace(/[^a-z0-9]/gi, "-")}`;
+}
+
+function getParentPath(path: string) {
+  const cleanPath = normalizeFolderPath(path);
+  const lastSlash = cleanPath.lastIndexOf("/");
+  return lastSlash === -1 ? "" : cleanPath.slice(0, lastSlash);
+}
+
+function getItemDepth(path: string) {
+  return Math.max(path.split("/").filter(Boolean).length - 1, 0);
+}
+
+function getItemName(path: string) {
+  const cleanPath = normalizeFolderPath(path);
+  const segments = cleanPath.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? cleanPath;
+}
+
+function sortTreeItems(items: TreeItem[]) {
+  return [...items].sort((a, b) => {
+    if (a.path === b.path) return 0;
+    const depth = getItemDepth(a.path) - getItemDepth(b.path);
+    if (depth !== 0) return depth;
+    if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function ensureFolderChain(items: TreeItem[], folderPath: string) {
+  const normalized = normalizeFolderPath(folderPath);
+  if (!normalized) return items;
+  const existing = new Set(items.filter((item) => item.type === "folder").map((item) => item.path));
+  const next = [...items];
+  const segments = normalized.split("/");
+  let runningPath = "";
+
+  segments.forEach((segment) => {
+    runningPath = runningPath ? `${runningPath}/${segment}` : segment;
+    if (existing.has(runningPath)) return;
+    next.push({
+      id: toItemId("folder", runningPath),
+      name: segment,
+      path: runningPath,
+      type: "folder",
+    });
+    existing.add(runningPath);
+  });
+
+  return next;
+}
+
 function normalizeStepPattern(step: string) {
   return step.replace(/\s+/g, " ").trim();
 }
@@ -264,6 +329,7 @@ export default function AppDetail() {
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [newFolderName, setNewFolderName] = useState("");
   const [newFileName, setNewFileName] = useState("");
+  const [selectedFolderPath, setSelectedFolderPath] = useState("features");
   const editorRef = useRef<MonacoApi.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const initializedRef = useRef(false);
@@ -293,6 +359,7 @@ export default function AppDetail() {
       type: "file",
     };
     setItems([root, starterFile]);
+    setSelectedFolderPath(root.path);
     setSelectedFilePath(starterPath);
     setFileContents({ [starterPath]: DEFAULT_FEATURE_CONTENT });
   }, [appId]);
@@ -309,6 +376,7 @@ export default function AppDetail() {
   }, []);
 
   const selectedContent = fileContents[selectedFilePath] ?? "";
+  const orderedItems = useMemo(() => sortTreeItems(items), [items]);
 
   const insertAtCursor = (text: string) => {
     const editor = editorRef.current;
@@ -355,26 +423,41 @@ export default function AppDetail() {
   };
 
   const createFolder = () => {
-    const folder = newFolderName.trim();
-    if (!folder) return;
-    if (items.some((item) => item.path === folder)) return;
-    setItems((prev) => [...prev, { id: `folder-${folder}`, name: folder, path: folder, type: "folder" }]);
+    const folderName = normalizeFolderPath(newFolderName);
+    if (!folderName) return;
+
+    const baseFolder = normalizeFolderPath(selectedFolderPath || "features");
+    const fullPath = normalizeFolderPath(`${baseFolder}/${folderName}`);
+    if (!fullPath) return;
+    if (items.some((item) => item.path === fullPath)) return;
+
+    setItems((prev) => sortTreeItems(ensureFolderChain(prev, fullPath)));
+    setSelectedFolderPath(fullPath);
     setNewFolderName("");
   };
 
   const createFeatureFile = () => {
-    const fileName = newFileName.trim();
+    const fileName = normalizeFolderPath(newFileName);
     if (!fileName) return;
-    const normalized = fileName.endsWith(".feature") ? fileName : `${fileName}.feature`;
-    const fullPath = `features/${normalized}`;
+
+    const baseFolder = normalizeFolderPath(selectedFolderPath || "features");
+    const normalizedFileName = fileName.endsWith(".feature") ? fileName : `${fileName}.feature`;
+    const fullPath = normalizeFolderPath(`${baseFolder}/${normalizedFileName}`);
+    if (!fullPath) return;
     if (items.some((item) => item.path === fullPath)) return;
 
-    setItems((prev) => [
-      ...prev,
-      { id: `file-${fullPath.replace(/[^a-z0-9]/gi, "-")}`, name: normalized, path: fullPath, type: "file" },
-    ]);
+    const parentFolder = getParentPath(fullPath);
+
+    setItems((prev) => {
+      const withFolders = ensureFolderChain(prev, parentFolder || baseFolder);
+      return sortTreeItems([
+        ...withFolders,
+        { id: toItemId("file", fullPath), name: getItemName(fullPath), path: fullPath, type: "file" },
+      ]);
+    });
     setFileContents((prev) => ({ ...prev, [fullPath]: DEFAULT_FEATURE_CONTENT }));
     setSelectedFilePath(fullPath);
+    setSelectedFolderPath(parentFolder || baseFolder);
     setNewFileName("");
   };
 
@@ -404,7 +487,12 @@ export default function AppDetail() {
           <p className="mb-2 text-sm font-semibold text-[#24292f]">Feature workspace</p>
 
           <div className="mb-3 grid gap-2">
-            <Input placeholder="new-folder" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} />
+            <Input
+              placeholder="new-folder"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+            />
+            <p className="text-xs text-[#57606a]">Current folder: {selectedFolderPath}</p>
             <Button size="sm" variant="outline" onClick={createFolder}>
               <FolderPlus className="mr-2 h-4 w-4" /> Create folder
             </Button>
@@ -419,21 +507,31 @@ export default function AppDetail() {
           </div>
 
           <div className="space-y-1">
-            {items.map((item) => (
+            {orderedItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                disabled={item.type === "folder"}
-                onClick={() => item.type === "file" && setSelectedFilePath(item.path)}
+                onClick={() => {
+                  if (item.type === "folder") {
+                    setSelectedFolderPath(item.path);
+                    return;
+                  }
+                  setSelectedFilePath(item.path);
+                  setSelectedFolderPath(getParentPath(item.path) || "features");
+                }}
                 className={`w-full rounded px-2 py-1 text-left text-sm ${
                   item.type === "folder"
-                    ? "cursor-default bg-[#f6f8fa] font-semibold text-[#57606a]"
+                    ? selectedFolderPath === item.path
+                      ? "bg-[#ddf4ff] font-semibold text-[#0969da]"
+                      : "bg-[#f6f8fa] font-semibold text-[#57606a] hover:bg-[#eef2f6]"
                     : selectedFilePath === item.path
                     ? "bg-[#ddf4ff] text-[#0969da]"
                     : "hover:bg-[#f6f8fa]"
                 }`}
               >
-                {item.type === "folder" ? "📁" : "📄"} {item.name}
+                <span style={{ paddingLeft: `${getItemDepth(item.path) * 12}px` }} className="inline-block">
+                  {item.type === "folder" ? "📁" : "📄"} {getItemName(item.path)}
+                </span>
               </button>
             ))}
           </div>
